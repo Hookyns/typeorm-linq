@@ -1,0 +1,39 @@
+{
+  "name": "typeorm-linq",
+  "version": "0.0.1",
+  "description": "True LINQ wrapper around TypeORM",
+  "main": "index.js",
+  "scripts": {
+    "gen-migration": "ttsc && typeorm migration:generate",
+    "run-migration": "ttsc && typeorm migration:run",
+    "seed": "ttsc && node ./node_modules/typeorm-seeding/dist/cli.js seed",
+    "build": "ttsc",
+    "test": "echo \"Error: no test specified \" && exit 1"
+  },
+  "keywords": [
+    "TypeORM",
+    "LINQ",
+    "ORM",
+    "typescript",
+    "expression",
+    "query",
+    "builder"
+  ],
+  "author": "Roman Jámbor",
+  "license": "MIT",
+  "dependencies": {
+    "js-expr-tree": "^1.0.9",
+    "mysql2": "^2.1.0",
+    "reflect-metadata": "^0.1.13",
+    "tsyringe": "^4.1.0",
+    "typeorm": "^0.2.24"
+  },
+  "devDependencies": {
+    "@types/faker": "^4.1.11",
+    "@types/node": "^13.13.4",
+    "ttypescript": "^1.5.10",
+    "typeorm-seeding": "^1.6.1",
+    "typescript": "^3.8.3",
+    "typescript-expression-transformer": "^1.1.0"
+  }
+}

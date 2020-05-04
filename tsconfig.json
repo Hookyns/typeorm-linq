@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "esnext",
+    "removeComments": true,
+    "sourceMap": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "plugins": [
+      {
+        "transform": "typescript-expression-transformer"
+      }
+    ]
+  },
+  "include": [
+    "./src/**/*.ts",
+    "./src/**/*.d.ts",
+    "./dev/**/*.ts",
+    "./dev/**/*.d.ts",
+    "node_modules/js-expr-tree/declarations.d.ts"
+  ]
+}
