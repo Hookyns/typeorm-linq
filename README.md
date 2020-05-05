@@ -34,7 +34,7 @@ let users3 = await new LinqSelectQueryBuilder(getConnection().manager, User)
 // Generated query: SELECT * FROM `user` `__mainEntity` WHERE `__mainEntity`.`firstName` IN (?) OR `__mainEntity`.`midName` LIKE 'A%' OR `__mainEntity`.`midName` LIKE '%s' -- PARAMETERS: [["Lukas","Leon","Paul"]]
 ```
 
-###Transpiled Code:
+### Transpiled Code:
 ```javascript
 let filter = {
     findLastName: "Paul",
