@@ -79,7 +79,7 @@ let users3 = await new LinqSelectQueryBuilder_1.default(typeorm_1.getConnection(
     .getRawMany();
 ```
 
-### Valid but not Working Example
+### Valid but not Working Example (soon)
 ```typescript
 await new LinqSelectQueryBuilder(getConnection().manager, User)
     .innerJoin(
