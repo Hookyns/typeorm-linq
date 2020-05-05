@@ -2,9 +2,8 @@
 True LINQ expressions in Typescript over TypeORM thanks to custom [typescript-expression-transformer](https://www.npmjs.com/package/typescript-expression-transformer).
 Thanks to this wrapper, you are able to write clear TS(/JS) with typing support of IDEs, it's regular code.
 
-To run this, you just need to transpile typescript with mentioned transform plugin. Use ttypescript package for it.
-
-Early development!!
+## Early development!
+This is an early stage of development. Everything is subject to change.
 
 ## Working Examples
 ```typescript
@@ -105,4 +104,30 @@ await new LinqSelectQueryBuilder(getConnection().manager, User)
     }))
     .where(x => !!x.name)
     .getMany()
+```
+
+## How to Run
+To run this, you just need to transpile typescript with mentioned transform plugin. Use [ttypescript](https://www.npmjs.com/package/ttypescript) package for it.
+Just add transformer to `tsconfig.json` and run `ttsc` instead of `tsc`.
+```json
+{
+    "compilerOptions": {
+        "plugins": [
+            { "transform": "typescript-expression-transformer" }
+        ]
+    }
+}
+```
+
+or Webpack
+```javascript
+{
+    test: /\.(ts|tsx)$/,
+    loader: require.resolve('awesome-typescript-loader'),
+    // or
+    loader: require.resolve('ts-loader'),
+    options: {
+        compiler: 'ttypescript'
+    }
+}
 ```
