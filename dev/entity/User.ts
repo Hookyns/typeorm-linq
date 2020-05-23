@@ -5,7 +5,6 @@ import {UserRole}                                                               
 @Entity()
 export class User
 {
-
 	@PrimaryGeneratedColumn()
 	id: number;
 
@@ -31,4 +30,13 @@ export class User
 	@ManyToOne(() => UserRole, {cascade: true, lazy: true})
 	@JoinColumn({name: "userRoleId"})
 	userRole: UserRole;
+
+	/**
+	 * Ctor
+	 * @param initializer
+	 */
+	constructor(initializer?: Partial<User>)
+	{
+		Object.assign(this, initializer)
+	}
 }

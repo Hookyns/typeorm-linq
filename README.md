@@ -14,8 +14,10 @@ let filter = {
     requestedNames: ["Lukas", "Leon", "Paul"]
 };
 
+let field = "lastName";
+
 let users = await new LinqSelectQueryBuilder(getConnection().manager, User)
-    .where(user => (user.firstName == "Nash" || user.lastName == filter.findLastName) && user.midName != "Carl")
+    .where(user => (user.firstName == "Nash" || user[field] == filter.findLastName) && user!["midName"] != "Carl")
     .getRawMany();
 
 // Generated query: SELECT * FROM `user` `__mainEntity` WHERE (`__mainEntity`.`firstName` = 'Nash' OR `__mainEntity`.`lastName` = ?) AND `__mainEntity`.`midName` != 'Carl' -- PARAMETERS: ["Paul"]

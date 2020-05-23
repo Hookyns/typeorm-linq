@@ -1,17 +1,22 @@
-import {createConnection} from "typeorm";
-import SelectBuilder      from "./SelectBuilder";
+import {Connection, createConnection} from "typeorm";
+import SelectBuilder                  from "./SelectBuilder";
 
 (async () =>
 {
+	let connection: Connection;
+
 	try
 	{
-		const connection = await createConnection();
+		connection = await createConnection();
 
 		await new SelectBuilder().init();
-
-		await connection.close();
-	} catch (e)
+	} 
+	catch (e)
 	{
 		console.error(e);
+	} 
+	finally
+	{
+		await connection.close();
 	}
 })();

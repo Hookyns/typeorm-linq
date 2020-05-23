@@ -22,7 +22,7 @@
   "author": "Roman Jámbor",
   "license": "MIT",
   "dependencies": {
-    "js-expr-tree": "^1.0.9",
+    "js-expr-tree": "^1.1.5",
     "mysql2": "^2.1.0",
     "reflect-metadata": "^0.1.13",
     "tsyringe": "^4.1.0",

@@ -5,10 +5,20 @@ import {UserAccount}          from "./entity/UserAccount";
 import {UserRole}             from "./entity/UserRole";
 import {UserRoleSysNames}     from "./entity/UserRoleSysNames";
 
+class Test {
+	foo: string;
+	bar: number;
+	baz: boolean;
+}
+
+export const test = <Test>{
+	bar: 5,
+	baz: false,
+	foo: "Hello class initializer"
+};
+
 export default class SelectBuilder
 {
-	
-	
 	async init() {
 		let filter = {
 			findLastName: "Paul",
@@ -16,8 +26,10 @@ export default class SelectBuilder
 			requestedNames: ["Lukas", "Leon", "Paul"]
 		};
 		
+		let field = "lastName";
+		
 		let users = await new LinqSelectQueryBuilder(getConnection().manager, User)
-			.where(user => (user.firstName == "Nash" || user.lastName == filter.findLastName) && user.midName != "Carl")
+			.where(user => (user.firstName == "Nash" || user[field] == filter.findLastName) && user!["midName"] != "Carl")
 			.getRawMany();
 		
 		console.log(users);
@@ -32,7 +44,7 @@ export default class SelectBuilder
 			.where(user => filter.requestedNames.includes(user.firstName) || user.midName.startsWith("A") || user.midName.endsWith("s"))
 			.getRawMany();
 
-		console.log(users3);
+		console.log(typeof users3[0], users3[0]);
 		
 		return;
 		

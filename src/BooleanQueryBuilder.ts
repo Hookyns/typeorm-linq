@@ -1,5 +1,8 @@
-import {ExpressionKind}               from "js-expr-tree";
-import {isArrowFunction, regexToLike} from "./Helpers";
+import {ExpressionKind, guards, nodes} from "js-expr-tree";
+import {isArrowFunction, regexToLike}  from "./Helpers";
+import {ParamAliases}                  from "./types";
+
+const IDENTIFIER_TEST_REGEX = /^[\w\d_]+$/;
 
 export default class BooleanQueryBuilder
 {
@@ -106,12 +109,18 @@ export default class BooleanQueryBuilder
 	 * @param expr
 	 * @param paramAliases
 	 */
-	static from(expr: Expression<(entity) => boolean | RegExpMatchArray>, paramAliases: { [key: string]: any }): [string, { [key: string]: any }]
+	static from(expr: Expression<(entity) => boolean | RegExpMatchArray> | Expression<(entity, entity2) => boolean | RegExpMatchArray>, paramAliases: ParamAliases): [string, { [key: string]: any }]
 	{
-		if (!isArrowFunction(expr.expression)) return;
+		if (!isArrowFunction(expr.expression)) throw undefined;
 
 		if (this.supportedTopLevelExpressions.indexOf(expr.expression.body.kind) != -1)
 		{
+			// Remove arrow function parameters from context; params override parent context variables and these params cannot be in context
+			expr.expression.parameters.map(param =>
+			{
+				expr.context[param.name.escapedText] = undefined;
+			});
+
 			return BooleanQueryBuilder.stringify(expr.expression.body, expr.context, paramAliases);
 		}
 
@@ -124,47 +133,51 @@ export default class BooleanQueryBuilder
 	 * @param context
 	 * @param paramAliases
 	 */
-	private static stringify(expr: ExpressionNode | any, context: { [key: string]: any }, paramAliases: { [key: string]: any }): [string, { [key: string]: any }]
+	private static stringify(expr: ExpressionNode | any, context: { [key: string]: any }, paramAliases: ParamAliases): [string, { [key: string]: any }]
 	{
-		if (expr.kind == ExpressionKind.NumericLiteral)
+		// Number
+		if (guards.isNumericLiteral(expr))
 		{
 			return [expr.text, {}];
 		}
 
+		// TRUE
 		if (expr.kind == ExpressionKind.TrueKeyword)
 		{
 			return ["TRUE", {}];
 		}
 
+		// FALSE
 		if (expr.kind == ExpressionKind.FalseKeyword)
 		{
 			return ["FALSE", {}];
 		}
 
+		// String
 		if (this.stringExpressionKinds.indexOf(expr.kind) != -1)
 		{
 			return ["'" + expr.text + "'", {}];
 		}
 
-		if (expr.kind == ExpressionKind.BinaryExpression)
+		if (guards.isBinaryExpression(expr))
 		{
 			if (expr.left.kind == ExpressionKind.NullKeyword)
 			{
 				const [right, rightParams] = BooleanQueryBuilder.stringify(expr.right, context, paramAliases);
 
 				const not = expr.operatorToken.kind == ExpressionKind.ExclamationEqualsToken
-					|| expr.operatorToken.kind == ExpressionKind.ExclamationEqualsEqualsToken ? " NOT" : "";
-				
+				|| expr.operatorToken.kind == ExpressionKind.ExclamationEqualsEqualsToken ? " NOT" : "";
+
 				return [right + ` IS${not} NULL`, {...rightParams}];
 			}
-			
+
 			if (expr.right.kind == ExpressionKind.NullKeyword)
 			{
 				const [left, leftParams] = BooleanQueryBuilder.stringify(expr.left, context, paramAliases);
 
 				const not = expr.operatorToken.kind == ExpressionKind.ExclamationEqualsToken
-					|| expr.operatorToken.kind == ExpressionKind.ExclamationEqualsEqualsToken ? " NOT" : "";
-				
+				|| expr.operatorToken.kind == ExpressionKind.ExclamationEqualsEqualsToken ? " NOT" : "";
+
 				return [left + ` IS${not} NULL`, {...leftParams}];
 			}
 
@@ -173,7 +186,7 @@ export default class BooleanQueryBuilder
 			return [left + " " + this.operatorsMap[expr.operatorToken.kind] + " " + right, {...leftParams, ...rightParams}];
 		}
 
-		if (expr.kind == ExpressionKind.Identifier)
+		if (guards.isIdentifierExpression(expr))
 		{
 			return [":" + expr.escapedText, {[expr.escapedText]: context[expr.escapedText]}];
 		}
@@ -184,35 +197,35 @@ export default class BooleanQueryBuilder
 			return ["(" + parenthesized + ")", parenthesizedParams];
 		}
 
-		if (expr.kind == ExpressionKind.CallExpression)
+		if (guards.isCallExpression(expr))
 		{
 			let [functionName, args, params] = this.getCall(expr, context, paramAliases);
 
 			return [this.processFunctionCall(functionName, args, params), params];
 		}
 
-		if (expr.kind == ExpressionKind.PropertyAccessExpression)
+		if (guards.isPropertyAccessExpression(expr) || guards.isElementAccessExpression(expr))
 		{
-			return this.processPropertyAccess(this.stringifyPropertyAccess(expr, paramAliases), context);
+			return this.processPropertyAccess(this.stringifyPropertyAccess(expr, paramAliases, context), context);
 		}
 
-		if (expr.kind == ExpressionKind.NonNullExpression)
+		if (guards.isNonNullExpression(expr))
 		{
 			// POZN.: Maybe some check can be generated but SQL don't need it generally
-			return this.stringify(expr.expression, context, paramAliases);
+			return BooleanQueryBuilder.stringify(expr.expression, context, paramAliases);
 		}
 
-		if (expr.kind == ExpressionKind.PrefixUnaryExpression)
+		if (guards.isPrefixUnaryExpression(expr))
 		{
 			if (expr.operator == ExpressionKind.ExclamationToken)
 			{
-				if (expr.operand.kind == ExpressionKind.PrefixUnaryExpression && expr.operand.operator == ExpressionKind.ExclamationToken)
+				if (guards.isPrefixUnaryExpression(expr.operand) && expr.operand.operator == ExpressionKind.ExclamationToken)
 				{
-					const [result, params] = this.stringify(expr.operand.expression, context, paramAliases);
+					const [result, params] = BooleanQueryBuilder.stringify(expr.operand.operand/*.expression*/, context, paramAliases);
 					return [result + " = TRUE", params];
 				}
 
-				const [result, params] = this.stringify(expr.expression, context, paramAliases);
+				const [result, params] = BooleanQueryBuilder.stringify(expr.operand/*.expression*/, context, paramAliases);
 				return [result + " = FALSE", params];
 			}
 
@@ -222,7 +235,7 @@ export default class BooleanQueryBuilder
 	}
 
 	/**
-	 * Zpracuje přístup k property
+	 * Process access to property; if it's context variable, change it to param
 	 * @param propertyAccess
 	 * @param context
 	 */
@@ -244,15 +257,215 @@ export default class BooleanQueryBuilder
 	 * Convert property access into string path
 	 * @param expr
 	 * @param paramAliases
+	 * @param context
 	 */
-	private static stringifyPropertyAccess(expr: ExpressionNode | any, paramAliases: { [key: string]: any }): string
+	private static stringifyPropertyAccess(
+		expr: nodes.PropertyAccessExpressionNode | nodes.IdentifierExpressionNode | nodes.NonNullExpressionNode | nodes.ElementAccessExpressionNode,
+		paramAliases: ParamAliases,
+		context: { [key: string]: any }
+	): string
 	{
-		if (expr.kind == ExpressionKind.Identifier)
+		let alias, returnValue: string | undefined, mainFieldValue: string;
+
+		// if (guards.isIdentifierExpression(expr))
+		// {
+		// 	alias = BooleanQueryBuilder.tryGetAlias(expr.escapedText, undefined, paramAliases);
+		//
+		// 	return alias
+		// 		? alias
+		// 		: (paramAliases[expr.escapedText] || expr.escapedText);
+		// }
+		// else if (guards.isPropertyAccessExpression(expr) && guards.isIdentifierExpression(expr.expression))
+		// {
+		// 	alias = BooleanQueryBuilder.tryGetAlias(expr.expression.escapedText, expr.name.escapedText, paramAliases);
+		// }
+		// else if (guards.isElementAccessExpression(expr) && guards.isIdentifierExpression(expr.expression))
+		// {
+		// 	alias = BooleanQueryBuilder.tryGetAlias(expr.expression.escapedText, BooleanQueryBuilder.getArgumentExpressionValueForPath(expr, context), paramAliases);
+		// }
+		// else if (guards.isPropertyAccessExpression(expr) && guards.isNonNullExpression(expr.expression) && guards.isIdentifierExpression(expr.expression.expression))
+		// {
+		// 	alias = BooleanQueryBuilder.tryGetAlias(expr.expression.expression.escapedText, expr.name.escapedText, paramAliases);
+		// }
+
+
+		if (guards.isIdentifierExpression(expr))
 		{
-			return paramAliases[expr.escapedText] || expr.escapedText;
+			alias = BooleanQueryBuilder.tryGetAlias(expr.escapedText, undefined, paramAliases);
+
+			return alias
+				? alias
+				: (paramAliases[expr.escapedText] || expr.escapedText);
+		}
+		else if (guards.isPropertyAccessExpression(expr))
+		{
+			// if (guards.isIdentifierExpression(expr.expression))
+			// {
+			// 	alias = BooleanQueryBuilder.tryGetAlias(expr.expression.escapedText, expr.name.escapedText, paramAliases);
+			// }
+			// else if (guards.isNonNullExpression(expr.expression))
+			// {
+			// 	if (guards.isIdentifierExpression(expr.expression.expression))
+			// 	{
+			// 		alias = BooleanQueryBuilder.tryGetAlias(expr.expression.expression.escapedText, expr.name.escapedText, paramAliases);
+			// 	}
+			// 	else
+			// 	{
+			// 		return this.stringifyPropertyAccess(
+			// 			expr.expression.expression as nodes.PropertyAccessExpressionNode | nodes.ElementAccessExpressionNode,
+			// 			paramAliases,
+			// 			context
+			// 		) + "." + expr.name.escapedText;
+			// 	}
+			// }
+			mainFieldValue = expr.name.escapedText;
+			({alias, returnValue} = BooleanQueryBuilder.stringifyPropertyAccessPart(expr, mainFieldValue, paramAliases, context));
+
+			if (returnValue)
+			{
+				return returnValue;
+			}
+		}
+		else if (guards.isElementAccessExpression(expr))
+		{
+			// if (guards.isIdentifierExpression(expr.expression))
+			// {
+			// 	alias = BooleanQueryBuilder.tryGetAlias(expr.expression.escapedText, BooleanQueryBuilder.getArgumentExpressionValueForPath(expr, context), paramAliases);
+			// }
+			// else if (guards.isNonNullExpression(expr.expression))
+			// {
+			// 	if (guards.isIdentifierExpression(expr.expression.expression))
+			// 	{
+			// 		alias = BooleanQueryBuilder.tryGetAlias(expr.expression.expression.escapedText, BooleanQueryBuilder.getArgumentExpressionValueForPath(expr, context), paramAliases);
+			// 	}
+			// 	else
+			// 	{
+			// 		return this.stringifyPropertyAccess(
+			// 			expr.expression.expression as nodes.PropertyAccessExpressionNode | nodes.ElementAccessExpressionNode,
+			// 			paramAliases,
+			// 			context
+			// 		) + "." + BooleanQueryBuilder.getArgumentExpressionValueForPath(expr, context);
+			// 	}
+			// }
+			mainFieldValue = BooleanQueryBuilder.getElementAccessExpressionArgumentValueForPath(expr, context);
+			({alias, returnValue} = BooleanQueryBuilder.stringifyPropertyAccessPart(expr, mainFieldValue, paramAliases, context));
+
+			if (returnValue)
+			{
+				return returnValue;
+			}
 		}
 
-		return this.stringifyPropertyAccess(expr.expression, paramAliases) + "." + expr.name.escapedText;
+		if (alias)
+		{
+			return alias;
+		}
+
+		return this.stringifyPropertyAccess(
+			expr.expression as nodes.PropertyAccessExpressionNode | nodes.IdentifierExpressionNode | nodes.ElementAccessExpressionNode,
+			paramAliases,
+			context
+		) + "." + mainFieldValue;
+	}
+
+	/**
+	 * Process part of property access stringify
+	 * @param expr
+	 * @param mainField
+	 * @param paramAliases
+	 * @param context
+	 */
+	private static stringifyPropertyAccessPart(
+		expr: nodes.PropertyAccessExpressionNode | nodes.ElementAccessExpressionNode,
+		mainField: string,
+		paramAliases: ParamAliases,
+		context: { [key: string]: any }): { alias: string | false, returnValue: string | undefined }
+	{
+		let alias;
+
+		if (guards.isIdentifierExpression(expr.expression))
+		{
+			alias = BooleanQueryBuilder.tryGetAlias(expr.expression.escapedText, mainField, paramAliases);
+		}
+		else if (guards.isNonNullExpression(expr.expression))
+		{
+			if (guards.isIdentifierExpression(expr.expression.expression))
+			{
+				alias = BooleanQueryBuilder.tryGetAlias(expr.expression.expression.escapedText, mainField, paramAliases);
+			}
+			else
+			{
+				return {
+					alias: false,
+					returnValue: this.stringifyPropertyAccess(
+						expr.expression.expression as nodes.PropertyAccessExpressionNode | nodes.ElementAccessExpressionNode,
+						paramAliases,
+						context
+					) + "." + mainField
+				};
+			}
+		}
+
+		return {
+			alias,
+			returnValue: undefined
+		};
+	}
+
+	/**
+	 * Return value of ElementAccessExpressionNode for property path
+	 * @param expr
+	 * @param context
+	 */
+	private static getElementAccessExpressionArgumentValueForPath(expr: nodes.ElementAccessExpressionNode, context: { [key: string]: any }): string
+	{
+		let value: string;
+		let test = false;
+
+		// Identifier
+		if (guards.isIdentifierExpression(expr.argumentExpression))
+		{
+			value = context[expr.argumentExpression.escapedText] || "undefined";
+			test = true;
+		}
+
+		// String
+		else if (this.stringExpressionKinds.indexOf(expr.argumentExpression.kind) != -1)
+		{
+			value = (expr.argumentExpression as nodes.StringLiteralNode).text;
+			test = true;
+		}
+
+		// Number
+		else if (guards.isNumericLiteral(expr.argumentExpression))
+		{
+			value = expr.argumentExpression.text;
+		}
+
+		// TRUE
+		else if (expr.argumentExpression.kind == ExpressionKind.TrueKeyword)
+		{
+			value = "true";
+		}
+
+		// FALSE
+		else if (expr.argumentExpression.kind == ExpressionKind.FalseKeyword)
+		{
+			value = "false";
+		}
+
+		// NULL
+		else if (expr.argumentExpression.kind == ExpressionKind.NullKeyword)
+		{
+			value = "null";
+		}
+
+		if (!value || (test && !IDENTIFIER_TEST_REGEX.test(value)))
+		{
+			throw new Error(`Invalid element access expression value ('${value}').`);
+		}
+
+		return value;
 	}
 
 	/**
@@ -262,7 +475,7 @@ export default class BooleanQueryBuilder
 	 * @param paramAliases
 	 * @returns [functionName: string, [property: string, ...args], params: { [key: string]: any }]
 	 */
-	private static getCall(callExpr: ExpressionNode | any, context: { [key: string]: any }, paramAliases: { [key: string]: any }): [string, string[], { [key: string]: any }]
+	private static getCall(callExpr: nodes.CallExpressionNode, context: { [key: string]: any }, paramAliases: ParamAliases): [string, string[], { [key: string]: any }]
 	{
 		let params = {};
 
@@ -273,33 +486,78 @@ export default class BooleanQueryBuilder
 			return arg;
 		});
 
-		if (callExpr.expression.kind == ExpressionKind.Identifier)
+		if (guards.isIdentifierExpression(callExpr.expression))
 		{
 			return [callExpr.expression.escapedText, [undefined, ...args], {}];
 		}
 
-		if (callExpr.expression.kind == ExpressionKind.PropertyAccessExpression)
+		if (guards.isPropertyAccessExpression(callExpr.expression) || guards.isElementAccessExpression(callExpr.expression))
 		{
+			// let path = "";
+			// let expr = callExpr.expression.expression;
+			//
+			// while (true)
+			// {
+			// 	if (!expr) break;
+			//
+			// 	if (expr.kind == ExpressionKind.Identifier || expr.expression.kind == ExpressionKind.Identifier)
+			// 	{
+			// 		let alias = BooleanQueryBuilder.tryGetAlias(expr.escapedText, expr.expression?.escapedText, paramAliases);
+			//
+			// 		if (alias)
+			// 		{
+			// 			path = alias + (path ? "." + path : "");
+			// 			break;
+			// 		}
+			// 	}
+			//
+			// 	path = expr.name.escapedText + (path ? "." + path : "");
+			// 	expr = expr.expression;
+			// }
 
-			let path = "";
-			let expr = callExpr.expression.expression;
-
-			while (expr && expr.kind != ExpressionKind.Identifier)
-			{
-				path = expr.name.escapedText + (path ? "." + path : "");
-				expr = expr.expression;
-			}
-
-			path = (paramAliases[expr.escapedText] || expr.escapedText) + "." + path;
-
-			let propParams;
-			[path, propParams] = this.processPropertyAccess(path, context);
+			let [path, propParams] = this.processPropertyAccess(this.stringifyPropertyAccess(callExpr.expression.expression, paramAliases, context), context);
 			params = Object.assign(propParams, params);
 
-			return [callExpr.expression.name.escapedText, [path || undefined, ...args], params];
+			return [
+				guards.isPropertyAccessExpression(callExpr.expression)
+					? callExpr.expression.name.escapedText
+					: BooleanQueryBuilder.getElementAccessExpressionArgumentValueForPath(callExpr.expression, context),
+				[path || undefined, ...args],
+				params
+			];
 		}
 
 		throw new Error("Not implemented expression.");
+	}
+
+	/**
+	 * Returns alias or false
+	 * @param identifier1
+	 * @param identifier2
+	 * @param paramAliases
+	 */
+	private static tryGetAlias(identifier1: string, identifier2: string, paramAliases: ParamAliases): string | false
+	{
+		let aliases = paramAliases[identifier1];
+
+		if (aliases)
+		{
+			if (typeof (aliases) == "string")
+			{
+				return aliases + (identifier2 ? "." + identifier2 : "");
+			}
+
+			return aliases[identifier2];
+		}
+
+		return false;
+
+		// if (paramAliases.__simpleParam && paramAliases.__simpleParam.name == identifier1)
+		// {
+		// 	return paramAliases.__simpleParam.alias;
+		// }
+		//
+		// return (paramAliases[identifier1] as AliasesDescription)?.[identifier2]?.alias || false;
 	}
 
 	/**
