@@ -191,7 +191,7 @@ export default class BooleanQueryBuilder
 			return [":" + expr.escapedText, {[expr.escapedText]: context[expr.escapedText]}];
 		}
 
-		if (expr.kind == ExpressionKind.ParenthesizedExpression)
+		if (guards.isParenthesizedExpression(expr))
 		{
 			const [parenthesized, parenthesizedParams] = this.stringify(expr.expression, context, paramAliases);
 			return ["(" + parenthesized + ")", parenthesizedParams];
@@ -288,65 +288,17 @@ export default class BooleanQueryBuilder
 		// 	alias = BooleanQueryBuilder.tryGetAlias(expr.expression.expression.escapedText, expr.name.escapedText, paramAliases);
 		// }
 
-
-		if (guards.isIdentifierExpression(expr))
+		if (guards.isNonNullExpression(expr))
 		{
-			alias = BooleanQueryBuilder.tryGetAlias(expr.escapedText, undefined, paramAliases);
-
-			return alias
-				? alias
-				: (paramAliases[expr.escapedText] || expr.escapedText);
-		}
-		else if (guards.isPropertyAccessExpression(expr))
-		{
-			// if (guards.isIdentifierExpression(expr.expression))
-			// {
-			// 	alias = BooleanQueryBuilder.tryGetAlias(expr.expression.escapedText, expr.name.escapedText, paramAliases);
-			// }
-			// else if (guards.isNonNullExpression(expr.expression))
-			// {
-			// 	if (guards.isIdentifierExpression(expr.expression.expression))
-			// 	{
-			// 		alias = BooleanQueryBuilder.tryGetAlias(expr.expression.expression.escapedText, expr.name.escapedText, paramAliases);
-			// 	}
-			// 	else
-			// 	{
-			// 		return this.stringifyPropertyAccess(
-			// 			expr.expression.expression as nodes.PropertyAccessExpressionNode | nodes.ElementAccessExpressionNode,
-			// 			paramAliases,
-			// 			context
-			// 		) + "." + expr.name.escapedText;
-			// 	}
-			// }
-			mainFieldValue = expr.name.escapedText;
-			({alias, returnValue} = BooleanQueryBuilder.stringifyPropertyAccessPart(expr, mainFieldValue, paramAliases, context));
-
-			if (returnValue)
-			{
-				return returnValue;
-			}
+			// Just ignore it and stringify content of NonNull expression
+			return BooleanQueryBuilder.stringifyPropertyAccess(
+				expr.expression as nodes.PropertyAccessExpressionNode | nodes.IdentifierExpressionNode | nodes.ElementAccessExpressionNode, 
+				paramAliases, 
+				context
+			);
 		}
 		else if (guards.isElementAccessExpression(expr))
 		{
-			// if (guards.isIdentifierExpression(expr.expression))
-			// {
-			// 	alias = BooleanQueryBuilder.tryGetAlias(expr.expression.escapedText, BooleanQueryBuilder.getArgumentExpressionValueForPath(expr, context), paramAliases);
-			// }
-			// else if (guards.isNonNullExpression(expr.expression))
-			// {
-			// 	if (guards.isIdentifierExpression(expr.expression.expression))
-			// 	{
-			// 		alias = BooleanQueryBuilder.tryGetAlias(expr.expression.expression.escapedText, BooleanQueryBuilder.getArgumentExpressionValueForPath(expr, context), paramAliases);
-			// 	}
-			// 	else
-			// 	{
-			// 		return this.stringifyPropertyAccess(
-			// 			expr.expression.expression as nodes.PropertyAccessExpressionNode | nodes.ElementAccessExpressionNode,
-			// 			paramAliases,
-			// 			context
-			// 		) + "." + BooleanQueryBuilder.getArgumentExpressionValueForPath(expr, context);
-			// 	}
-			// }
 			mainFieldValue = BooleanQueryBuilder.getElementAccessExpressionArgumentValueForPath(expr, context);
 			({alias, returnValue} = BooleanQueryBuilder.stringifyPropertyAccessPart(expr, mainFieldValue, paramAliases, context));
 
@@ -355,6 +307,24 @@ export default class BooleanQueryBuilder
 				return returnValue;
 			}
 		}
+		else if (guards.isPropertyAccessExpression(expr))
+		{
+			mainFieldValue = expr.name.escapedText;
+			({alias, returnValue} = BooleanQueryBuilder.stringifyPropertyAccessPart(expr, mainFieldValue, paramAliases, context));
+
+			if (returnValue)
+			{
+				return returnValue;
+			}
+		}
+		else if (guards.isIdentifierExpression(expr))
+		{
+			alias = BooleanQueryBuilder.tryGetAlias(expr.escapedText, undefined, paramAliases);
+
+			return alias
+				? alias
+				: (paramAliases[expr.escapedText] || expr.escapedText);
+		}
 
 		if (alias)
 		{
@@ -362,7 +332,7 @@ export default class BooleanQueryBuilder
 		}
 
 		return this.stringifyPropertyAccess(
-			expr.expression as nodes.PropertyAccessExpressionNode | nodes.IdentifierExpressionNode | nodes.ElementAccessExpressionNode,
+			expr.expression as nodes.PropertyAccessExpressionNode | nodes.IdentifierExpressionNode | nodes.ElementAccessExpressionNode | nodes.NonNullExpressionNode,
 			paramAliases,
 			context
 		) + "." + mainFieldValue;

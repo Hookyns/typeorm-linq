@@ -1,4 +1,4 @@
-import {ExpressionKind}                   from "js-expr-tree";
+import {ExpressionKind, guards}           from "js-expr-tree";
 import {SelectQueryBuilder}               from "typeorm";
 import {ObjectType}                       from "typeorm/common/ObjectType";
 import {EntityManager}                    from "typeorm/entity-manager/EntityManager";
@@ -61,7 +61,7 @@ export default class LinqSelectQueryBuilder<TEntity>
 	{
 		this.entityType = entityType;
 		this.manager = manager;
-		this.aliases[MAIN_ALIAS_ID] = {type: entityType, alias: BASE_ALIAS};
+		this.aliases[MAIN_ALIAS_ID] = {type: entityType, alias: this.getNewAlias()};
 	}
 
 	/**
@@ -127,8 +127,11 @@ export default class LinqSelectQueryBuilder<TEntity>
 		}
 		else
 		{
-			let [on, onParams] = BooleanQueryBuilder.from(joinOn, this.getExpressionParamsAliases(joinOn, target));
-			this.builder.innerJoin(target, joinOn.expression.parameters[1].name.escapedText, on, onParams);
+			let targetAlias = this.getNewAlias();
+			let [on, onParams] = BooleanQueryBuilder.from(joinOn, this.getExpressionParamsAliases(joinOn, target, targetAlias));
+			this.builder.innerJoin(target, targetAlias, on, onParams);
+
+			this.updateAliases(result, target, targetAlias);
 		}
 
 		// TODO: Implement Result
@@ -167,6 +170,7 @@ export default class LinqSelectQueryBuilder<TEntity>
 	{
 		return await this.builder.getMany();
 	}
+
 
 	select(...args)
 	{
@@ -207,29 +211,57 @@ export default class LinqSelectQueryBuilder<TEntity>
 	 */
 	private getNewAlias()
 	{
-		return BASE_ALIAS + (++this.usedAliasNumber);
+		return BASE_ALIAS + (++this.usedAliasNumber).toString();
 	}
 
 	private getExpressionParamsAliases<TTargetEntity = null>(
 		expression: Expression<(entity) => (boolean | RegExpMatchArray)> | Expression<(entity, entity2) => (boolean | RegExpMatchArray)>,
-		target?: ObjectType<TTargetEntity> | LinqSelectQueryBuilder<TTargetEntity>
+		target?: ObjectType<TTargetEntity> | LinqSelectQueryBuilder<TTargetEntity>,
+		targetAlias?: string
 	): ParamAliases
 	{
 		if (!isArrowFunction(expression.expression)) throw undefined;
-		
+
 		const paramAliases = {};
 		const keys = Object.keys(this.aliases);
 
-		// if tt's default query without any result object, then set alias right into param
+		// if it's default query without any result object, then set alias right into param
 		// otherwise set mapping of aliases into param
-		paramAliases[expression.expression.parameters[0].name.escapedText] = keys.length == 1 
-			? this.aliases[keys[0]].alias 
+		paramAliases[expression.expression.parameters[0].name.escapedText] = keys.length == 1
+			? this.aliases[keys[0]].alias
 			: keys.map(resultFieldName => this.aliases[resultFieldName].alias);
-		
-		if (target) {
-			paramAliases[expression.expression.parameters[1].name.escapedText] = this.getNewAlias();
+
+		if (target)
+		{
+			paramAliases[expression.expression.parameters[1].name.escapedText] = targetAlias || this.getNewAlias();
 		}
-		
+
 		return paramAliases;
+	}
+
+	/**
+	 * Update stored aliases
+	 * @param resultExpression
+	 * @param target
+	 * @param targetAlias
+	 */
+	private updateAliases<TTargetEntity, TResult>(resultExpression: Expression<(first: TEntity, second: TTargetEntity) => TResult>, target: ObjectType<TTargetEntity> | LinqSelectQueryBuilder<TTargetEntity>, targetAlias: string)
+	{
+		if (!isArrowFunction(resultExpression.expression)) throw undefined;
+
+		// Single value result
+		if (guards.isIdentifierExpression(resultExpression.expression.body) || guards.isPropertyAccessExpression(resultExpression.expression.body))
+		{
+			// TODO: vymazat všechny aliasy, kromě toho zde zmíněného
+		}
+		// Object literal
+		else if (guards.isParenthesizedExpression(resultExpression.expression.body) && guards.isObjectLiteralExpression(resultExpression.expression.body.expression))
+		{
+			
+		}
+		else
+		{
+			throw new Error("Invalid result selector. It must be object literal or single value from param.");
+		}
 	}
 }

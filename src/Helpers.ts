@@ -23,7 +23,7 @@ export function regexToLike(pattern): string
 		% - the percent sign represents zero or one and more characters,
 		_ - the underscore represents a single character
 	 */
-	return pattern
+	return (pattern instanceof RegExp ? pattern.source : pattern)
 		// Change not escaped .* for %
 		.replace(/([^\\]|^)\.\*/g, "$1%")
 		// and not escaped . for "_"
